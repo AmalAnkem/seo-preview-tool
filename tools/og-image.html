@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<!--
+  Source for public/og-image.png. Rendered to PNG with headless Chrome:
+
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+      --headless --disable-gpu --hide-scrollbars --window-size=1200,630 \
+      --screenshot=public/og-image.png tools/og-image.html
+
+  Kept as HTML so the image can be edited and regenerated without a design tool
+  or an image library. 1200x630 is the size that renders correctly on Facebook,
+  LinkedIn, Slack, Discord, WhatsApp, iMessage and X.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 1200px; height: 630px;
+      font-family: Arial, Helvetica, sans-serif;
+      background: #ffffff;
+      padding: 52px 80px;
+      display: flex; flex-direction: column; justify-content: space-between;
+      overflow: hidden;
+    }
+    .eyebrow { font-size: 21px; letter-spacing: 0.14em; text-transform: uppercase;
+               color: #9aa0a6; font-weight: 700; }
+    h1 { font-size: 64px; line-height: 1.06; color: #1a1a1a; margin-top: 16px;
+         letter-spacing: -0.02em; }
+    .sub { font-size: 27px; line-height: 1.4; color: #5f6368; margin-top: 18px;
+           max-width: 940px; }
+
+    /* A miniature Google result, which is what the tool actually produces. */
+    .serp { border: 1px solid #e3e5e8; border-radius: 14px; padding: 20px 24px;
+            background: #fbfbfc; max-width: 900px; }
+    .serp-url { font-size: 18px; color: #202124; }
+    .serp-title { font-size: 29px; color: #1a0dab; margin: 7px 0 5px; }
+    .serp-desc { font-size: 20px; color: #4d5156; line-height: 1.4; }
+    .cut { color: #b9bcc0; }
+
+    .rule { display: flex; gap: 12px; align-items: center; margin-top: 22px; }
+    .pill { font-size: 18px; padding: 7px 15px; border-radius: 999px;
+            background: #eef6ef; color: #137333; font-weight: 700;
+            white-space: nowrap; }
+    .pill.warn { background: #fdf3e6; color: #b06000; }
+    .pill.bad  { background: #fdecef; color: #b00020; }
+  </style>
+</head>
+<body>
+  <div>
+    <div class="eyebrow">Free SEO tool</div>
+    <h1>See your page the way<br />Google sees it.</h1>
+    <p class="sub">Preview its search result and social card, and see what gets cut off.</p>
+  </div>
+
+  <div>
+    <div class="serp">
+      <div class="serp-url">example.com</div>
+      <div class="serp-title">Your page title, measured in pixels</div>
+      <div class="serp-desc">Your meta description, laid out in Google's own column
+        width and clamped to the lines it really shows<span class="cut">…</span></div>
+    </div>
+    <div class="rule">
+      <span class="pill">title fits</span>
+      <span class="pill warn">description too long</span>
+      <span class="pill bad">no og:image</span>
+    </div>
+  </div>
+</body>
+</html>

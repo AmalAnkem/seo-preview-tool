@@ -3,13 +3,49 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SEO Preview Tool</title>
+
+  <title>SEO Preview Tool — see your page as Google sees it</title>
+  <meta name="description" content="Paste a URL to preview how it appears as a Google
+    search result and a social share card, measured against the space Google actually
+    gives you, plus a health check of the tags that matter." />
+  <link rel="canonical" href="https://seo-preview-tool.pages.dev/" />
+
+  <!-- Open Graph. og:image is the one social tag with no fallback anywhere, which is
+       why the tool grades its absence as a failure — so it had better set one itself.
+       Absolute URL because relative og:image paths break on several platforms. -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="SEO Preview Tool" />
+  <meta property="og:url" content="https://seo-preview-tool.pages.dev/" />
+  <meta property="og:title" content="SEO Preview Tool — see your page as Google sees it" />
+  <meta property="og:description" content="Preview any URL as a Google result and a
+    social share card, and find out what gets cut off." />
+  <meta property="og:image" content="https://seo-preview-tool.pages.dev/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="A mock Google search result with labels reading
+    title fits, description too long, and no og:image." />
+
+  <!-- X falls back to og:* for title/description/image, so twitter:card is the only
+       one genuinely worth declaring: it selects the large-image layout. -->
+  <meta name="twitter:card" content="summary_large_image" />
+
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <style>
     body { font-family: system-ui, sans-serif; max-width: 640px; margin: 60px auto; padding: 0 16px; color: #1a1a1a; }
     h1 { font-size: 1.4rem; }
     .muted { color: #666; font-size: 0.9rem; }
     .heads-up { font-size: 0.82rem; line-height: 1.5; background: #f7f8f9;
                 border-left: 3px solid #dadce0; padding: 10px 12px; border-radius: 0 6px 6px 0; }
+
+    /* Visible to screen readers, not to the eye. */
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+    }
+    /* Don't remove focus outlines; keyboard users rely on them. */
+    input:focus-visible, button:focus-visible, a:focus-visible {
+      outline: 2px solid #1a0dab; outline-offset: 2px;
+    }
 
     form { display: flex; gap: 8px; margin-top: 16px; }
     input { flex: 1; padding: 10px; font-size: 1rem; box-sizing: border-box; }
@@ -139,13 +175,23 @@
 
   <!-- A <form> gives us Enter-to-submit for free. -->
   <form id="form">
-    <input id="url" type="text" placeholder="example.com  (https:// is optional)"
+    <!-- A placeholder is not a label: it vanishes as soon as you type and screen
+         readers treat it inconsistently. The label is visually hidden because the
+         heading and instructions above already make the purpose obvious on screen. -->
+    <label class="sr-only" for="url">Website URL to preview</label>
+    <!-- Deliberately type="text", not type="url": native url validation demands a
+         scheme and rejects "example.com" before our JS can add https://, which would
+         break the whole point of making the scheme optional. inputmode still gives
+         mobile keyboards the URL layout. -->
+    <input id="url" type="text" inputmode="url" placeholder="example.com  (https:// is optional)"
            autocapitalize="off" autocorrect="off" spellcheck="false" autofocus />
     <button id="go" type="submit">Preview</button>
   </form>
 
-  <div id="status"></div>
-  <div id="error"></div>
+  <!-- role="status" announces politely, waiting for a pause. role="alert"
+       interrupts, which is right for an error the user needs to know about now. -->
+  <div id="status" role="status" aria-live="polite"></div>
+  <div id="error" role="alert"></div>
 
   <!-- Off-screen measuring boxes, pinned to Google's column width. Not visible. -->
   <div class="measure" id="measure-title" aria-hidden="true"></div>
@@ -335,6 +381,7 @@
       // Loading state so the tool feels responsive. Because some sites take 10s+,
       // we escalate the message rather than leaving a silent "Fetching…" that
       // looks like a hang.
+      let announce = '';
       statusEl.textContent = 'Fetching…';
       button.disabled = true;
       const nudges = [
@@ -359,12 +406,17 @@
         }
 
         renderSerp(data);
+
+        // Announce the outcome. The results appear visually, but without this a
+        // screen reader user hears nothing at all after submitting.
+        announce = summarizeForScreenReader(data);
       } catch (err) {
         errorEl.textContent = 'Something went wrong: ' + err.message;
       } finally {
         clearNudges();
-        statusEl.textContent = '';
         button.disabled = false;
+        // Set last so the live region fires once, with the final message.
+        statusEl.textContent = announce;
       }
     });
 
@@ -421,6 +473,23 @@
     function clearMeter(el) {
       el.className = 'meter';
       el.textContent = '';
+    }
+
+    // A one-line spoken summary, so the result is conveyed without having to
+    // navigate the whole region to find out whether anything was wrong.
+    function summarizeForScreenReader(data) {
+      const problems = [];
+      if (!data.title) problems.push('no title tag');
+      if (!data.description) problems.push('no meta description');
+      if (!((data.og || {}).image || (data.twitter || {}).image)) problems.push('no social image');
+      if ((data.page || {}).h1Count === 0) problems.push('no H1 heading');
+
+      const host = hostnameOf(data.finalUrl) || 'that page';
+      return problems.length === 0
+        ? `Results ready for ${host}. No issues found. Details follow below.`
+        : `Results ready for ${host}. Found ${problems.length} ` +
+          `${problems.length === 1 ? 'issue' : 'issues'}: ${problems.join(', ')}. ` +
+          `Details follow below.`;
     }
 
     // --- Social share card --------------------------------------------------
