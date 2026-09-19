@@ -3,7 +3,7 @@
 .dev.vars
 
 # Audit output
-audit-results*.csv
+audit-*.csv
 
 # Python
 __pycache__/
