@@ -1,0 +1,12 @@
+# Cloudflare Pages configuration.
+#
+# compatibility_date pins which version of the Workers runtime we get. Without it
+# wrangler warns on every run and, more importantly, the deployed behaviour could
+# drift from local as Cloudflare ships runtime changes. Pinning it means local and
+# production run the same runtime.
+name = "seo-preview-tool"
+compatibility_date = "2026-09-16"
+
+# Static assets live here. Kept separate from the project root so that audit.py,
+# the CSVs and the README are never published to the web.
+pages_build_output_dir = "public"

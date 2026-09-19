@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SEO Preview Tool</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 60px auto; padding: 0 16px; color: #1a1a1a; }
+    h1 { font-size: 1.4rem; }
+    .muted { color: #666; font-size: 0.9rem; }
+
+    form { display: flex; gap: 8px; margin-top: 16px; }
+    input { flex: 1; padding: 10px; font-size: 1rem; box-sizing: border-box; }
+    button { padding: 10px 18px; font-size: 1rem; cursor: pointer; white-space: nowrap; }
+    button:disabled { opacity: 0.6; cursor: default; }
+
+    #status { margin-top: 16px; color: #666; }
+    #error { margin-top: 16px; color: #b00020; }
+
+    /* Google-style search result preview.
+       The key idea: rather than predicting truncation with pixel math, we render
+       the text in a container sized like Google's and let the BROWSER wrap and
+       clamp it. Then we ask the browser whether it overflowed. That measures
+       reality instead of guessing at it. */
+    .serp { padding: 16px; border: 1px solid #e0e0e0; border-radius: 10px; max-width: 640px; }
+    .serp-url { color: #202124; font-size: 0.82rem; line-height: 1.3; }
+
+    /* Google's result column is ~600px wide on desktop. Titles get one line.
+       font-family is set explicitly: leaving it to inherit system-ui made the
+       measurement vary by OS and browser (system-ui measured 550px where Arial
+       measured 568px for the same title, which flipped the verdict). */
+    .serp-title {
+      color: #1a0dab; font-family: Arial, Helvetica, sans-serif;
+      font-size: 20px; line-height: 1.3; margin: 4px 0 3px;
+      width: 600px; max-width: 100%;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .serp-title:hover { text-decoration: underline; cursor: pointer; }
+
+    /* Descriptions wrap and clamp to 2 lines on desktop (~3 on mobile). */
+    .serp-desc {
+      color: #4d5156; font-family: Arial, Helvetica, sans-serif;
+      font-size: 14px; line-height: 1.45;
+      width: 600px; max-width: 100%;
+      display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+      overflow: hidden;
+    }
+
+    /* Off-screen reference boxes used ONLY for measuring.
+       The visible preview above is responsive (max-width: 100%), which means on a
+       narrow window it shrinks — and measuring inside it made the verdict depend on
+       the user's window size. At a 600px window GitHub's title was reported as
+       truncated purely because the box had shrunk to 534px. These boxes are pinned
+       to Google's ~600px column and never reflow, so the verdict is stable. */
+    .measure {
+      position: absolute; left: -10000px; top: 0;
+      visibility: hidden; pointer-events: none;
+      font-family: Arial, Helvetica, sans-serif;
+      width: 600px;
+    }
+    #measure-title { font-size: 20px; line-height: 1.3; white-space: nowrap; }
+    #measure-desc { font-size: 14px; line-height: 1.45; }
+    /* Used to show the untruncated text when the user wants to see all of it. */
+    .serp-desc.show-all { display: block; -webkit-line-clamp: unset; }
+    .missing { color: #b00020; font-style: italic; }
+    .hidden { display: none; }
+
+    /* Pixel-width readout under each field */
+    .meter { margin: 4px 0 14px; font-size: 0.78rem; }
+    .meter-bar { height: 6px; border-radius: 3px; background: #e6e6e6; overflow: hidden; margin-top: 3px; max-width: 600px; }
+    .meter-fill { height: 100%; width: 0; transition: width 0.2s; }
+    .ok    { color: #137333; }  /* green  */
+    .warn  { color: #b06000; }  /* amber  */
+    .over  { color: #b00020; }  /* red    */
+    .fill-ok   { background: #34a853; }
+    .fill-warn { background: #f5a623; }
+    .fill-over { background: #ea4335; }
+    /* Section headings */
+    h2 { font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.04em;
+         color: #666; margin: 36px 0 10px; }
+
+    /* Social share card (Slack / LinkedIn / X "large image" style) */
+    .card { max-width: 520px; border: 1px solid #dfe1e5; border-radius: 12px; overflow: hidden; }
+    .card-img { width: 100%; display: block; background: #f1f3f4; aspect-ratio: 1200 / 630;
+                object-fit: cover; }
+    .card-img-missing { display: flex; align-items: center; justify-content: center;
+                        width: 100%; aspect-ratio: 1200 / 630; background: #f1f3f4;
+                        color: #b00020; font-size: 0.85rem; text-align: center; padding: 12px;
+                        box-sizing: border-box; font-style: italic; }
+    .card-body { padding: 12px 14px; }
+    .card-site { color: #5f6368; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em; }
+    .card-title { font-weight: 600; font-size: 0.98rem; margin: 3px 0; line-height: 1.3; }
+    .card-desc { color: #5f6368; font-size: 0.86rem; line-height: 1.4; }
+
+    /* Tag checklist */
+    .checks { margin-top: 14px; font-size: 0.85rem; line-height: 1.8; max-width: 600px; }
+    .check-row { display: flex; gap: 8px; }
+    .check-key { color: #444; min-width: 150px; font-family: ui-monospace, monospace; font-size: 0.8rem; }
+    .check-val { color: #666; word-break: break-word; }
+    /* Honest caveat text under the description */
+    .caveat { color: #70757a; font-size: 0.78rem; line-height: 1.5; margin: 10px 0 0;
+              max-width: 600px; }
+
+    /* Health check list */
+    .hc { max-width: 620px; }
+    .hc-item { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
+    .hc-item:last-child { border-bottom: none; }
+    .hc-mark { flex: 0 0 18px; font-weight: 700; line-height: 1.4; }
+    .hc-body { flex: 1; }
+    .hc-label { font-size: 0.9rem; line-height: 1.4; }
+    .hc-note { color: #70757a; font-size: 0.8rem; line-height: 1.45; margin-top: 2px; }
+    .hc-fail .hc-mark { color: #b00020; }
+    .hc-warn .hc-mark { color: #b06000; }
+    .hc-pass .hc-mark { color: #137333; }
+    .hc-info .hc-mark { color: #9aa0a6; }
+    .hc-summary { font-size: 0.88rem; margin: 0 0 12px; color: #444; }
+
+    .badge-ok, .badge-missing, .badge-covered { font-weight: 600; }
+    .badge-ok { color: #137333; }
+    .badge-missing { color: #b00020; }
+    .badge-covered { color: #9aa0a6; }
+    .check-covered { color: #9aa0a6; font-style: italic; }
+  </style>
+</head>
+<body>
+  <h1>SEO Preview Tool</h1>
+  <p class="muted">Paste a URL to see how it would look as a Google search result.</p>
+
+  <!-- A <form> gives us Enter-to-submit for free. -->
+  <form id="form">
+    <input id="url" type="text" placeholder="example.com  (https:// is optional)"
+           autocapitalize="off" autocorrect="off" spellcheck="false" autofocus />
+    <button id="go" type="submit">Preview</button>
+  </form>
+
+  <div id="status"></div>
+  <div id="error"></div>
+
+  <!-- Off-screen measuring boxes, pinned to Google's column width. Not visible. -->
+  <div class="measure" id="measure-title" aria-hidden="true"></div>
+  <div class="measure" id="measure-desc" aria-hidden="true"></div>
+
+  <!-- Everything below is hidden until we have data. -->
+  <div id="results" class="hidden">
+
+    <h2>Google search result</h2>
+    <div id="serp" class="serp">
+      <div class="serp-url" id="serp-url"></div>
+      <div class="serp-title" id="serp-title"></div>
+      <div class="meter" id="title-meter"></div>
+      <div class="serp-desc" id="serp-desc"></div>
+      <div class="meter" id="desc-meter"></div>
+      <p class="caveat">
+        Google rewrites descriptions roughly 70% of the time and picks a snippet per
+        search query, often from your page's body text instead. Treat this as what
+        you're telling Google, not what searchers will necessarily see. Social
+        platforms, by contrast, use it verbatim.
+      </p>
+    </div>
+
+    <h2>Social share card</h2>
+    <div class="card">
+      <div id="card-image-slot"></div>
+      <div class="card-body">
+        <div class="card-site" id="card-site"></div>
+        <div class="card-title" id="card-title"></div>
+        <div class="card-desc" id="card-desc"></div>
+      </div>
+    </div>
+    <div class="checks" id="social-checks"></div>
+
+    <h2>Health check</h2>
+    <div id="health"></div>
+
+  </div>
+
+  <script>
+    const form = document.getElementById('form');
+    const urlInput = document.getElementById('url');
+    const button = document.getElementById('go');
+    const statusEl = document.getElementById('status');
+    const errorEl = document.getElementById('error');
+    const results = document.getElementById('results');
+    const serpUrl = document.getElementById('serp-url');
+    const cardImageSlot = document.getElementById('card-image-slot');
+    const cardSite = document.getElementById('card-site');
+    const cardTitle = document.getElementById('card-title');
+    const cardDesc = document.getElementById('card-desc');
+    const socialChecks = document.getElementById('social-checks');
+    const health = document.getElementById('health');
+    const serpTitle = document.getElementById('serp-title');
+    const serpDesc = document.getElementById('serp-desc');
+    const titleMeter = document.getElementById('title-meter');
+    const descMeter = document.getElementById('desc-meter');
+
+    // --- Overflow measurement ----------------------------------------------
+    // We used to PREDICT truncation with canvas pixel math against a guessed
+    // ~920px limit. That was wrong twice over: the limit was too low (Stripe at
+    // 924px and Best Buy at ~950px both display in full on Google), and a single
+    // pixel budget is the wrong model anyway — Google wraps the description in a
+    // fixed-width column and clamps it to a number of lines.
+    //
+    // So instead we render the real text into a Google-sized container with a CSS
+    // line clamp, and then ask the browser whether it actually overflowed. The
+    // browser does the font metrics and word wrapping for us, which is exactly
+    // the thing we were trying to approximate.
+    // Assume https:// when no scheme is given, so "example.com" just works.
+    // Requires "://" rather than a bare colon, otherwise "localhost:8788" would be
+    // read as the scheme "localhost". Mirrors the same function in the API, which
+    // normalizes independently so the endpoint is robust on its own.
+    function normalizeUrl(input) {
+      const trimmed = String(input).trim();
+      if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) return trimmed;
+      if (trimmed.startsWith('//')) return 'https:' + trimmed;
+      return 'https://' + trimmed;
+    }
+
+    const DESC_VISIBLE_LINES = 2; // Google desktop; mobile shows roughly 3.
+    const GOOGLE_COLUMN_PX = 600; // Reference width of Google's result column.
+
+    const measureTitle = document.getElementById('measure-title');
+    const measureDesc = document.getElementById('measure-desc');
+
+    // Measure the text's NATURAL width, which is not the same as the box's width.
+    // scrollWidth is no good here: on a fixed-width element it equals clientWidth
+    // whenever the text fits, so every fitting title would look "100% full". A
+    // Range over the text nodes reports the real laid-out text geometry instead.
+    function textWidthOf(el) {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      return range.getBoundingClientRect().width;
+    }
+
+    function lineHeightOf(el) {
+      const lh = parseFloat(getComputedStyle(el).lineHeight);
+      return Number.isFinite(lh) && lh > 0 ? lh : 20;
+    }
+
+    // Report on the title: Google gives it one line in a ~600px column.
+    // Measured in the off-screen reference box, so window size can't change this.
+    function reportTitle(meterEl, text) {
+      measureTitle.textContent = text;
+      const needed = Math.round(textWidthOf(measureTitle));
+      const ratio = needed / GOOGLE_COLUMN_PX;
+
+      // 0.98, not 0.95. At 0.95 a title with ~30px of headroom got branded
+      // "could get cut off" while Google displayed it fine — the same
+      // overstating-problems mistake as the old pixel limits.
+      const band = ratio > 1 ? 'over' : ratio > 0.98 ? 'warn' : 'ok';
+
+      const message =
+        band === 'over'
+          ? `${text.length} characters, ~${needed}px — wider than the ~${GOOGLE_COLUMN_PX}px ` +
+            `Google gives a title, so it gets cut off`
+          : band === 'warn'
+          ? `${text.length} characters, ~${needed}px — right at the ~${GOOGLE_COLUMN_PX}px ` +
+            `Google gives, so it could go either way`
+          : `${text.length} characters, ~${needed}px — fits the ~${GOOGLE_COLUMN_PX}px ` +
+            `Google gives a title`;
+
+      paintMeter(meterEl, 'Title', message, band, Math.min(100, Math.round(ratio * 100)));
+    }
+
+    // Report on the description: it wraps in the column, then Google clamps it.
+    // Measured unclamped in the reference box so we get the true line count.
+    function reportDescription(meterEl, text) {
+      measureDesc.textContent = text;
+      const lh = lineHeightOf(measureDesc);
+      const totalLines = Math.max(1, Math.round(measureDesc.offsetHeight / lh));
+      const hidden = Math.max(0, totalLines - DESC_VISIBLE_LINES);
+
+      // Only overflow is a problem. Filling exactly the lines Google shows is the
+      // ideal, not a risk — an audit of 35 large sites had 25 of them landing on
+      // exactly 2 lines, and flagging all of those as "tight" was pure noise.
+      const band = totalLines > DESC_VISIBLE_LINES ? 'over' : 'ok';
+
+      const message =
+        band === 'over'
+          ? `${text.length} characters, ${totalLines} lines — Google shows about ` +
+            `${DESC_VISIBLE_LINES}, so roughly ${hidden} ` +
+            `${hidden === 1 ? 'line gets' : 'lines get'} cut`
+          : totalLines === DESC_VISIBLE_LINES
+          ? `${text.length} characters, ${totalLines} lines — uses the full ` +
+            `~${DESC_VISIBLE_LINES} lines Google shows`
+          : `${text.length} characters, ${totalLines} line${totalLines === 1 ? '' : 's'} — ` +
+            `fits, with room for more before Google's ~${DESC_VISIBLE_LINES}-line limit`;
+
+      const pct = Math.min(100, Math.round((totalLines / DESC_VISIBLE_LINES) * 100));
+      paintMeter(meterEl, 'Description', message, band, pct);
+    }
+
+    function paintMeter(el, label, message, band, pct) {
+      el.className = 'meter ' + band;
+      el.innerHTML =
+        `${label}: ${message}` +
+        `<div class="meter-bar"><div class="meter-fill fill-${band}" style="width:${pct}%"></div></div>`;
+    }
+
+    // 'submit' fires on both button click AND Enter key while in the input.
+    form.addEventListener('submit', async (event) => {
+      // Stop the browser's default behavior of reloading the page on submit.
+      event.preventDefault();
+
+      const typed = urlInput.value.trim();
+      errorEl.textContent = '';
+      results.classList.add('hidden');
+
+      if (!typed) {
+        errorEl.textContent = 'Please paste a URL first.';
+        return;
+      }
+
+      // Assume https:// when no scheme was typed, and write it back into the input
+      // so the user can see what we assumed rather than wondering.
+      const target = normalizeUrl(typed);
+      if (target !== typed) {
+        urlInput.value = target;
+      }
+
+      // Loading state so the tool feels responsive. Because some sites take 10s+,
+      // we escalate the message rather than leaving a silent "Fetching…" that
+      // looks like a hang.
+      statusEl.textContent = 'Fetching…';
+      button.disabled = true;
+      const nudges = [
+        [4000, 'Still fetching — this site is slow to respond…'],
+        [8000, 'Some sites deliberately slow down automated requests. Hanging on…'],
+      ];
+      const timers = nudges.map(([delay, message]) =>
+        setTimeout(() => {
+          statusEl.textContent = message;
+        }, delay)
+      );
+      const clearNudges = () => timers.forEach(clearTimeout);
+
+      try {
+        const response = await fetch('/api/fetch?url=' + encodeURIComponent(target));
+        const data = await response.json();
+        clearNudges();
+
+        if (data.error) {
+          errorEl.textContent = data.error;
+          return;
+        }
+
+        renderSerp(data);
+      } catch (err) {
+        errorEl.textContent = 'Something went wrong: ' + err.message;
+      } finally {
+        clearNudges();
+        statusEl.textContent = '';
+        button.disabled = false;
+      }
+    });
+
+    // Turn a URL into the breadcrumb-ish display Google shows (domain › path).
+    function displayUrl(rawUrl) {
+      try {
+        const u = new URL(rawUrl);
+        const path = u.pathname === '/' ? '' : u.pathname.replace(/\/$/, '');
+        return u.hostname + (path ? ' › ' + path.split('/').filter(Boolean).join(' › ') : '');
+      } catch {
+        return rawUrl;
+      }
+    }
+
+    function renderSerp(data) {
+      serpUrl.textContent = displayUrl(data.finalUrl);
+
+      // Put the FULL text in. The CSS clamps it visually, exactly like Google
+      // does, so we never decide for ourselves where to cut.
+      if (data.title) {
+        serpTitle.textContent = data.title;
+        serpTitle.classList.remove('missing');
+      } else {
+        serpTitle.textContent = 'No <title> tag found — Google would generate one for you';
+        serpTitle.classList.add('missing');
+      }
+
+      if (data.description) {
+        serpDesc.textContent = data.description;
+        serpDesc.classList.remove('missing');
+      } else {
+        serpDesc.textContent = 'No meta description — Google would pull a snippet from the page';
+        serpDesc.classList.add('missing');
+      }
+
+      renderSocialCard(data);
+      renderHealth(data);
+
+      results.classList.remove('hidden');
+
+      if (data.title) {
+        reportTitle(titleMeter, data.title);
+      } else {
+        clearMeter(titleMeter);
+      }
+
+      if (data.description) {
+        reportDescription(descMeter, data.description);
+      } else {
+        clearMeter(descMeter);
+      }
+    }
+
+    function clearMeter(el) {
+      el.className = 'meter';
+      el.textContent = '';
+    }
+
+    // --- Social share card --------------------------------------------------
+    // Platforms read Open Graph (og:*) tags. Twitter/X reads twitter:* but falls
+    // back to og:*. If neither exists, platforms fall back to the plain <title>
+    // and meta description — which usually looks worse. We show that chain.
+    function renderSocialCard(data) {
+      const og = data.og || {};
+      const tw = data.twitter || {};
+
+      // The fallback chain platforms actually use.
+      const shareTitle = og.title || tw.title || data.title || null;
+      const shareDesc = og.description || tw.description || data.description || null;
+      const shareImage = og.image || tw.image || null;
+      const siteName = og.siteName || hostnameOf(data.finalUrl);
+
+      // Image (or an honest placeholder explaining what's missing).
+      cardImageSlot.innerHTML = '';
+      if (shareImage) {
+        const img = document.createElement('img');
+        img.className = 'card-img';
+        img.alt = 'Social share image for this page';
+        img.src = shareImage;
+        // Some sites block hot-linking, so handle a failed load gracefully.
+        img.addEventListener('error', () => {
+          cardImageSlot.innerHTML =
+            '<div class="card-img-missing">The og:image is set, but it failed to load ' +
+            '(the site may block hot-linking).</div>';
+        });
+        cardImageSlot.appendChild(img);
+      } else {
+        cardImageSlot.innerHTML =
+          '<div class="card-img-missing">No og:image — shared links will appear ' +
+          'without a preview image, which gets noticeably fewer clicks.</div>';
+      }
+
+      cardSite.textContent = siteName || '';
+
+      if (shareTitle) {
+        cardTitle.textContent = shareTitle;
+        cardTitle.classList.remove('missing');
+      } else {
+        cardTitle.textContent = 'No title available for sharing';
+        cardTitle.classList.add('missing');
+      }
+
+      if (shareDesc) {
+        cardDesc.textContent = shareDesc;
+        cardDesc.classList.remove('missing');
+      } else {
+        cardDesc.textContent = 'No description available for sharing';
+        cardDesc.classList.add('missing');
+      }
+
+      renderChecks(og, tw, data);
+    }
+
+    // --- Health check -------------------------------------------------------
+    // Severity is graded deliberately, not uniformly. Marking everything red is
+    // how a health check becomes noise that people learn to ignore — a mistake this
+    // tool made repeatedly in earlier versions. The grades reflect real impact:
+    //
+    //   fail  a searcher or sharer is demonstrably losing something
+    //   warn  worth fixing, but something degrades gracefully in the meantime
+    //   info  a difference, not a defect
+    //
+    // Notably, a missing meta description is only a WARN. Google rewrites
+    // descriptions ~70% of the time regardless, so its absence often changes
+    // nothing on Google — though social platforms do use it verbatim.
+    function renderHealth(data) {
+      const og = data.og || {};
+      const tw = data.twitter || {};
+      const p = data.page || {};
+      const items = [];
+
+      const noindex = /(^|[,\s])noindex([,\s]|$)/i.test(p.robots || '');
+      if (noindex) {
+        items.push(['fail', 'This page tells search engines not to index it',
+          `Its robots meta is "${p.robots}". Google will leave it out of results entirely, ` +
+          `so nothing else on this list matters until that changes.`]);
+      } else if (p.robots) {
+        items.push(['info', `robots meta: ${p.robots}`, 'Indexing is allowed.']);
+      }
+
+      items.push(data.title
+        ? ['pass', 'Has a title tag', null]
+        : ['fail', 'No title tag', 'Google will invent one from the page content.']);
+
+      items.push(data.description
+        ? ['pass', 'Has a meta description', null]
+        : ['warn', 'No meta description',
+           'Less costly than it sounds on Google, which writes its own snippet most of the ' +
+           'time anyway. But social platforms use this text verbatim, so shared links suffer.']);
+
+      const shareImage = og.image || tw.image;
+      items.push(shareImage
+        ? ['pass', 'Has a social share image', null]
+        : ['fail', 'No og:image',
+           'The only social tag with no fallback. Without it, links shared to Slack, ' +
+           'LinkedIn and iMessage appear as bare text with no picture.']);
+
+      if (p.h1Count === 0) {
+        items.push(['warn', 'No H1 heading',
+          'The H1 tells both readers and crawlers what the page is primarily about.']);
+      } else if (p.h1Count === 1) {
+        items.push(['pass', 'Has exactly one H1', p.h1First ? `"${p.h1First.slice(0, 90)}"` : null]);
+      } else {
+        items.push(['info', `${p.h1Count} H1 headings`,
+          'Valid in HTML5 and not an error, though a single H1 states the page topic ' +
+          'more clearly.']);
+      }
+
+      if (p.imagesTotal === 0) {
+        items.push(['info', 'No images found', null]);
+      } else if (p.imagesMissingAlt === 0) {
+        items.push(['pass', `All ${p.imagesTotal} images have alt attributes`, null]);
+      } else {
+        items.push(['warn',
+          `${p.imagesMissingAlt} of ${p.imagesTotal} images have no alt attribute`,
+          'Alt text is what screen readers announce and what search engines read. ' +
+          'Note that alt="" is deliberate and correct for decorative images; only a ' +
+          'missing attribute is counted here.']);
+      }
+
+      items.push(p.viewport
+        ? ['pass', 'Has a viewport meta tag', null]
+        : ['warn', 'No viewport meta tag',
+           'Without it mobile browsers render the page at desktop width and zoom out. ' +
+           'Google indexes mobile-first.']);
+
+      items.push(p.canonical
+        ? ['pass', 'Has a canonical URL', p.canonical]
+        : ['info', 'No canonical URL',
+           'Optional. It matters mainly when the same content is reachable at several ' +
+           'URLs and you need to tell Google which one counts.']);
+
+      items.push(p.lang
+        ? ['pass', `Declares a language (lang="${p.lang}")`, null]
+        : ['info', 'No lang attribute on <html>',
+           'Helps screen readers pick the right pronunciation.']);
+
+      const mark = { fail: '\u2715', warn: '!', pass: '\u2713', info: '\u2013' };
+      const fails = items.filter((i) => i[0] === 'fail').length;
+      const warns = items.filter((i) => i[0] === 'warn').length;
+
+      const summary = noindex
+        ? 'This page is hidden from search engines. Fix that first.'
+        : fails === 0 && warns === 0
+        ? 'No issues found.'
+        : `${fails} ${fails === 1 ? 'issue' : 'issues'} worth fixing, ` +
+          `${warns} ${warns === 1 ? 'suggestion' : 'suggestions'}.`;
+
+      health.className = 'hc';
+      health.innerHTML =
+        `<p class="hc-summary">${escapeHtml(summary)}</p>` +
+        items
+          .map(([level, label, note]) =>
+            `<div class="hc-item hc-${level}">` +
+            `<span class="hc-mark">${mark[level]}</span>` +
+            `<span class="hc-body"><span class="hc-label">${escapeHtml(label)}</span>` +
+            (note ? `<div class="hc-note">${escapeHtml(note)}</div>` : '') +
+            `</span></div>`
+          )
+          .join('');
+    }
+
+    function hostnameOf(rawUrl) {
+      try {
+        return new URL(rawUrl).hostname;
+      } catch {
+        return '';
+      }
+    }
+
+    // A checklist of social tags. Crucially, a missing tag is NOT automatically a
+    // problem: platforms have documented fallback chains. X/Twitter falls back to
+    // og:* for title/description/image, and og:title itself falls back to <title>.
+    // So we grade three ways:
+    //   present  (✓ green)  - the tag is set
+    //   covered  (– gray)   - not set, but a fallback handles it. Not a problem.
+    //   missing  (✗ red)    - not set and nothing covers it. Worth fixing.
+    function renderChecks(og, tw, data) {
+      const rows = [
+        {
+          key: 'og:title',
+          value: og.title,
+          coveredBy: data.title ? 'falls back to the <title> tag' : null,
+        },
+        {
+          key: 'og:description',
+          value: og.description,
+          coveredBy: data.description ? 'falls back to the meta description' : null,
+        },
+        {
+          key: 'og:image',
+          value: og.image,
+          // The one tag with no fallback anywhere. No image means no visual card.
+          coveredBy: tw.image ? 'twitter:image is set, so X is covered' : null,
+          whyItMatters: 'nothing falls back to this — without it, shared links have no image',
+        },
+        { key: 'og:url', value: og.url, optional: 'only affects how shares are attributed' },
+        { key: 'og:site_name', value: og.siteName, optional: 'cosmetic label on the card' },
+        { key: 'og:type', value: og.type, optional: 'usually safe to omit for normal pages' },
+        {
+          key: 'twitter:card',
+          value: tw.card,
+          optional:
+            'X may still render a card from og:* tags, but setting summary_large_image ' +
+            'is what guarantees the big-image layout',
+        },
+        {
+          key: 'twitter:title',
+          value: tw.title,
+          coveredBy: og.title
+            ? 'X uses og:title'
+            : data.title
+            ? 'X falls back to the <title> tag'
+            : null,
+        },
+        {
+          key: 'twitter:description',
+          value: tw.description,
+          coveredBy: og.description
+            ? 'X uses og:description'
+            : data.description
+            ? 'X falls back to the meta description'
+            : null,
+        },
+        { key: 'twitter:image', value: tw.image, coveredBy: og.image ? 'X uses og:image' : null },
+      ];
+
+      socialChecks.innerHTML = rows
+        .map((row) => {
+          if (row.value) {
+            return checkRow('✓', 'badge-ok', row.key, escapeHtml(String(row.value)), 'check-val');
+          }
+          if (row.coveredBy) {
+            return checkRow('–', 'badge-covered', row.key,
+              'not set — ' + escapeHtml(row.coveredBy), 'check-val check-covered');
+          }
+          if (row.optional) {
+            return checkRow('–', 'badge-covered', row.key,
+              'not set — ' + escapeHtml(row.optional), 'check-val check-covered');
+          }
+          const why = row.whyItMatters ? ' — ' + escapeHtml(row.whyItMatters) : '';
+          return checkRow('✗', 'badge-missing', row.key, 'not set' + why, 'check-val badge-missing');
+        })
+        .join('');
+    }
+
+    function checkRow(symbol, badgeClass, key, value, valueClass) {
+      return (
+        `<div class="check-row"><span class="${badgeClass}">${symbol}</span>` +
+        `<span class="check-key">${key}</span>` +
+        `<span class="${valueClass}">${value}</span></div>`
+      );
+    }
+
+    // Escape text before putting it in innerHTML, so a page's tags can't inject
+    // markup into our own page. Always do this with untrusted content.
+    function escapeHtml(str) {
+      return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+  </script>
+</body>
+</html>

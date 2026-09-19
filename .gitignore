@@ -1,0 +1,21 @@
+# Wrangler local state and build cache
+.wrangler/
+.dev.vars
+
+# Audit output
+audit-results*.csv
+
+# Python
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+
+# Editors
+.vscode/
+.idea/
+
+# Kiro workspace config. Excluded because the steering file holds personal notes
+# about goals and experience level. Remove this line if you'd rather share it.
+.kiro/
