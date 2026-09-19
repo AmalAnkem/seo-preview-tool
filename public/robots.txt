@@ -1,0 +1,9 @@
+# Allow every crawler everywhere. Nothing here is private.
+User-agent: *
+Allow: /
+
+# /api/fetch takes a ?url= parameter, so crawlers could otherwise generate endless
+# distinct URLs. Blocking it keeps crawl budget on the page that matters.
+Disallow: /api/
+
+Sitemap: https://seo-preview-tool.pages.dev/sitemap.xml
