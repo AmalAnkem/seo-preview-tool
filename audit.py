@@ -37,12 +37,28 @@ import csv
 import json
 import os
 import re
-import shutil
+import ssl
 import subprocess
 import sys
 import urllib.parse
 import urllib.request
 
+# This Python install has no usable system CA bundle, so HTTPS requests fail with
+# CERTIFICATE_VERIFY_FAILED (a common macOS python.org quirk, unrelated to the tool
+# being audited). Point at certifi's bundle when it's available rather than asking
+# anyone to run "Install Certificates.command" or, worse, disabling verification.
+try:
+    import certifi
+    SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
+except ImportError:
+    SSL_CONTEXT = ssl.create_default_context()
+
+# Default to the local dev server. Use --api to audit the deployed site instead:
+#   python3 audit.py --batch all --api https://seo-preview-tool.pages.dev/api/fetch
+#
+# This matters more than it sounds. Sites that block a residential IP often serve
+# Cloudflare's edge without complaint (microsoft.com is the clearest example), so
+# local runs understate how many sites the deployed tool can actually read.
 API = 'http://localhost:8788/api/fetch'
 INDEX_HTML = 'public/index.html'
 CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
@@ -242,11 +258,25 @@ COMPANIES = BATCH_1
 # --------------------------------------------------------------------------
 # Step 1: call our API for every site
 # --------------------------------------------------------------------------
+def request(url, timeout):
+    """GET a URL, identifying ourselves properly.
+
+    Cloudflare returns 403 for the default "Python-urllib/3.x" User-Agent, so
+    auditing our own deployed site fails without this. Our own tool bot-blocking
+    our own audit script is a neat illustration of the thing it measures.
+    """
+    req = urllib.request.Request(url, headers={
+        'User-Agent': 'SEO-Preview-Tool-Audit/1.0 (+https://github.com/AmalAnkem/seo-preview-tool)',
+        'Accept': 'application/json, text/html',
+    })
+    return urllib.request.urlopen(req, timeout=timeout, context=SSL_CONTEXT)
+
+
 def fetch_one(entry):
     name, domain = entry
     url = f'{API}?url=' + urllib.parse.quote(f'https://{domain}', safe='')
     try:
-        with urllib.request.urlopen(url, timeout=REQUEST_TIMEOUT) as r:
+        with request(url, REQUEST_TIMEOUT) as r:
             data = json.loads(r.read().decode('utf-8'))
     except Exception as exc:
         data = {'error': f'request failed locally: {exc}'}
@@ -396,14 +426,17 @@ def social_state(r):
 
 
 def main():
-    global COMPANIES
+    global COMPANIES, API
 
     import argparse
     ap = argparse.ArgumentParser(description='Audit company sites through our SEO tool.')
     ap.add_argument('--batch', choices=sorted(BATCHES), default='1',
                     help='which company set to run (default: 1)')
     ap.add_argument('--out', default=None, help='CSV output path')
+    ap.add_argument('--api', default=API,
+                    help='API endpoint to audit through (default: local dev server)')
     args = ap.parse_args()
+    API = args.api
     COMPANIES = BATCHES[args.batch]
     csv_path = args.out or f'audit-results-batch{args.batch}.csv'
 
@@ -411,11 +444,14 @@ def main():
         sys.exit(f'Run this from the project root ({INDEX_HTML} not found).')
     if not os.path.exists(CHROME):
         sys.exit(f'Chrome not found at {CHROME}')
+    # Probe whichever API we were pointed at, not always localhost.
+    probe = API.split('/api/')[0] + '/'
     try:
-        urllib.request.urlopen('http://localhost:8788/', timeout=5)
-    except Exception:
-        sys.exit('Local server not reachable. Start it with:\n'
-                 '  npx wrangler pages dev . --port 8788')
+        request(probe, 15).close()
+    except Exception as exc:
+        sys.exit(f'{probe} not reachable ({exc}).\n'
+                 'For a local run, start the dev server first:\n'
+                 '  npx wrangler pages dev --port 8788')
 
     print(f'Auditing {len(COMPANIES)} sites through our own API...')
     results = collect()

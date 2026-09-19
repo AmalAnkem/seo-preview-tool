@@ -66,10 +66,28 @@ python3 audit.py --batch all            # all 164
 
 Writes `audit-results-batch<N>.csv` with the full text of every title and description.
 
-Results across 164 companies: 34% of sites were unreadable (bot-blocked, timed out,
-dropped the connection, or served a block page). Among the 108 readable ones, titles
-and descriptions were largely fine (0% missing titles, 8% over-long) but social tags
-were not: 30% had no `og:image` and 11% had no social tags at all.
+Point it at production to audit the deployed tool instead of the dev server:
+
+```
+python3 audit.py --batch all --api https://seo-preview-tool.pages.dev/api/fetch
+```
+
+### Results across 164 large companies
+
+|                          | local | production |
+|--------------------------|-------|------------|
+| readable                 | 108   | 112        |
+| unreadable               | 34%   | 32%        |
+
+Barely different in total, but the *composition* changes a lot. Microsoft, Cisco, Intel
+and Abbott are readable only from production; Alphabet, Bank of America, AbbVie and
+Blackstone only from a laptop. Sites block datacenter IPs and residential IPs by
+different rules, so neither vantage point is authoritative — roughly a third fail
+either way.
+
+Among the 112 readable in production, titles and descriptions were largely fine
+(1 missing title, 8% over-long) but social tags were not: **36 of 112 (32%) had no
+`og:image`** and 15 had no social tags at all.
 
 It does NOT compare against Google's live results — scraping Google's SERP breaks
 their terms and gets blocked. Instead it flags the sites where Google is most

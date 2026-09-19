@@ -91,6 +91,14 @@ function looksLikeBlockPage(title) {
 
 // Strip tags and drop script/style bodies, so an <h1> containing a <span> or an
 // icon still yields readable text.
+// Treat whitespace-only values as absent. A tag that exists but is empty carries
+// no more information than a missing one, and callers shouldn't have to check both.
+function blankToNull(value) {
+  if (value === null || value === undefined) return null;
+  const trimmed = String(value).trim();
+  return trimmed === '' ? null : trimmed;
+}
+
 function stripTags(fragment) {
   return fragment
     .replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, '')
@@ -226,6 +234,21 @@ export async function onRequest(context) {
       if (pageResponse.status === 404) {
         return json({ error: 'That page returned 404 Not Found. Check the URL path.' });
       }
+
+      // 520-527 are Cloudflare's own codes, generated when the edge can't get a
+      // usable answer from the origin. The site never sent them, so reporting
+      // "the site responded with 520" is simply wrong. In practice these show up
+      // for origins that are very slow to respond: every site that produced a 520
+      // here had also timed out when the same request was made from a laptop.
+      if (pageResponse.status >= 520 && pageResponse.status <= 527) {
+        return json({
+          error:
+            'That site never sent a usable response — it was too slow or refused the ' +
+            'connection outright. Sites that throttle automated traffic often behave ' +
+            'this way. Trying again sometimes works.',
+        });
+      }
+
       return json({
         error: `The site responded with status ${pageResponse.status}, so we couldn't read its tags.`,
       });
@@ -255,8 +278,11 @@ export async function onRequest(context) {
     // Grab the <title>.
     // (A later milestone will parse tags properly with Cloudflare's HTMLRewriter.
     //  Regex on HTML is fragile, but fine for now while we learn.)
+    // An empty <title></title> must read as absent, not as an empty string, or
+    // callers see a falsy-but-present value. paypal.com serves exactly this to
+    // some clients.
     const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
-    const title = titleMatch ? decodeEntities(titleMatch[1].trim()) : null;
+    const title = blankToNull(titleMatch ? decodeEntities(titleMatch[1]) : null);
 
     // Some sites serve a block/challenge page with HTTP 200 and a full-size body,
     // which slips past every check above. microsoft.com does exactly this: 200 OK,
@@ -275,7 +301,7 @@ export async function onRequest(context) {
       });
     }
 
-    const description = getMeta(html, 'description');
+    const description = blankToNull(getMeta(html, 'description'));
 
     const finalUrl = pageResponse.url || parsed.href;
 

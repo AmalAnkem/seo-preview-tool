@@ -8,6 +8,8 @@
     body { font-family: system-ui, sans-serif; max-width: 640px; margin: 60px auto; padding: 0 16px; color: #1a1a1a; }
     h1 { font-size: 1.4rem; }
     .muted { color: #666; font-size: 0.9rem; }
+    .heads-up { font-size: 0.82rem; line-height: 1.5; background: #f7f8f9;
+                border-left: 3px solid #dadce0; padding: 10px 12px; border-radius: 0 6px 6px 0; }
 
     form { display: flex; gap: 8px; margin-top: 16px; }
     input { flex: 1; padding: 10px; font-size: 1rem; box-sizing: border-box; }
@@ -125,6 +127,11 @@
 <body>
   <h1>SEO Preview Tool</h1>
   <p class="muted">Paste a URL to see how it would look as a Google search result.</p>
+  <p class="muted heads-up">
+    Heads up: roughly a third of large sites refuse automated requests and can't be
+    read by this or any similar tool — Amazon, Tesla and Home Depot among them. That's
+    their choice, not a fault here. Most ordinary sites work fine.
+  </p>
 
   <!-- A <form> gives us Enter-to-submit for free. -->
   <form id="form">
