@@ -9,18 +9,20 @@ Personal learning project — the goal is to learn to build AND deploy end to en
 
 ## Deploy
 
-```
-npx wrangler login                                          # once
-npx wrangler pages deploy --project-name seo-preview-tool --branch main
-```
+Cloudflare Pages is connected to this repo, so **pushing to `main` deploys automatically**.
+No deploy command needed.
+
+Build settings (Cloudflare dashboard): framework preset None, build command empty,
+output directory `public`. There is nothing to compile — the page is plain HTML and
+Pages bundles `functions/` on its own.
 
 `wrangler.toml` pins `compatibility_date` so production runs the same runtime as local,
 and sets `pages_build_output_dir = "public"` so only `public/` is published — `audit.py`,
 the CSVs and this README are never served.
 
-Note: `wrangler pages deploy` with no arguments fails with "cannot be run in a
-non-interactive context" because it wants to prompt for a project name. Pass
-`--project-name` and `--branch` explicitly.
+Note: a Pages project cannot be converted between Direct Upload and Git-connected.
+This project started as Direct Upload and had to be deleted and recreated to connect
+Git, which is why the repo is the source of truth.
 
 ## Security notes
 
