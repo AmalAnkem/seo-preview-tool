@@ -107,6 +107,26 @@ on the next, so counts move by one or two between runs.
 - [x] Disclaimer that Google rewrites descriptions ~70% of the time
 - [x] M4: health check (noindex, title, og:image, H1, image alt, viewport,
       canonical, lang)
+- [x] Pass its own health check. Pasting this tool's URL into it used to report no
+      description, no og:image and no social tags — failing the check it grades
+      hardest. `public/og-image.png` is rendered from `tools/og-image.html` with
+      headless Chrome, so it can be edited as HTML and regenerated with:
+
+      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+        --headless --window-size=1200,630 \
+        --screenshot=public/og-image.png tools/og-image.html
+
+- [x] Accessibility: labelled input, live-region announcements, focus outlines
+
+### Not done
+
+- The 15 flagged sites have not been checked against Google by hand.
+- No automated tests. `audit.py` is a harness, not a test suite: it reports what it
+  finds rather than asserting expected values, so nothing fails if behaviour regresses.
+- Only the `<head>` and a few body signals are parsed. No structured data (JSON-LD),
+  hreflang, robots.txt or sitemap checks.
+- Regex is used to parse HTML. It has held up across 164 sites but Cloudflare's
+  `HTMLRewriter` would be the correct tool.
 
 ## Health check severity
 
