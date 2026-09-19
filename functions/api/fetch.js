@@ -93,10 +93,17 @@ function looksLikeBlockPage(title) {
 // icon still yields readable text.
 // Treat whitespace-only values as absent. A tag that exists but is empty carries
 // no more information than a missing one, and callers shouldn't have to check both.
+// Collapse whitespace and treat a blank result as absent.
+//
+// HTML attribute values keep newlines and indentation, so a meta tag wrapped across
+// source lines yields "Preview any URL as a\n    social card". Browsers and crawlers
+// collapse that run of whitespace when rendering, so reporting it raw would both look
+// broken and overstate the measured width. A tag that exists but is empty carries no
+// more information than a missing one, so it becomes null.
 function blankToNull(value) {
   if (value === null || value === undefined) return null;
-  const trimmed = String(value).trim();
-  return trimmed === '' ? null : trimmed;
+  const collapsed = String(value).replace(/\s+/g, ' ').trim();
+  return collapsed === '' ? null : collapsed;
 }
 
 function stripTags(fragment) {
@@ -308,20 +315,22 @@ export async function onRequest(context) {
     // --- Social sharing tags ------------------------------------------------
     // Open Graph (og:*) is what Slack, LinkedIn, iMessage, Facebook etc. read.
     // Twitter Cards (twitter:*) are X's variant; X falls back to og:* if absent.
+    // blankToNull on every text value, so whitespace wrapped across source lines is
+    // collapsed the way a crawler would see it and empty tags read as absent.
     const og = {
-      title: getMeta(html, 'og:title'),
-      description: getMeta(html, 'og:description'),
-      image: absoluteUrl(getMeta(html, 'og:image'), finalUrl),
-      url: getMeta(html, 'og:url'),
-      siteName: getMeta(html, 'og:site_name'),
-      type: getMeta(html, 'og:type'),
+      title: blankToNull(getMeta(html, 'og:title')),
+      description: blankToNull(getMeta(html, 'og:description')),
+      image: absoluteUrl(blankToNull(getMeta(html, 'og:image')), finalUrl),
+      url: blankToNull(getMeta(html, 'og:url')),
+      siteName: blankToNull(getMeta(html, 'og:site_name')),
+      type: blankToNull(getMeta(html, 'og:type')),
     };
 
     const twitter = {
-      card: getMeta(html, 'twitter:card'),
-      title: getMeta(html, 'twitter:title'),
-      description: getMeta(html, 'twitter:description'),
-      image: absoluteUrl(getMeta(html, 'twitter:image'), finalUrl),
+      card: blankToNull(getMeta(html, 'twitter:card')),
+      title: blankToNull(getMeta(html, 'twitter:title')),
+      description: blankToNull(getMeta(html, 'twitter:description')),
+      image: absoluteUrl(blankToNull(getMeta(html, 'twitter:image')), finalUrl),
     };
 
     // --- On-page signals for the health check -------------------------------

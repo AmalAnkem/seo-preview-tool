@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
   <title>SEO Preview Tool — see your page as Google sees it</title>
-  <meta name="description" content="Paste a URL to preview how it appears as a Google
-    search result and a social share card, measured against the space Google actually
-    gives you, plus a health check of the tags that matter." />
+  <!-- Meta content is kept on single lines on purpose: HTML attribute values preserve
+       newlines and indentation, so wrapping them puts literal whitespace into the tag. -->
+  <meta name="description" content="Paste a URL to preview how it appears as a Google search result and a social share card, measured against the space Google really gives you, plus a health check of the tags that matter." />
   <link rel="canonical" href="https://seo-preview-tool.pages.dev/" />
 
   <!-- Open Graph. og:image is the one social tag with no fallback anywhere, which is
@@ -17,13 +17,11 @@
   <meta property="og:site_name" content="SEO Preview Tool" />
   <meta property="og:url" content="https://seo-preview-tool.pages.dev/" />
   <meta property="og:title" content="SEO Preview Tool — see your page as Google sees it" />
-  <meta property="og:description" content="Preview any URL as a Google result and a
-    social share card, and find out what gets cut off." />
+  <meta property="og:description" content="Preview any URL as a Google result and a social share card, and find out what gets cut off." />
   <meta property="og:image" content="https://seo-preview-tool.pages.dev/og-image.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
-  <meta property="og:image:alt" content="A mock Google search result with labels reading
-    title fits, description too long, and no og:image." />
+  <meta property="og:image:alt" content="A mock Google search result with labels reading title fits, description too long, and no og:image." />
 
   <!-- X falls back to og:* for title/description/image, so twitter:card is the only
        one genuinely worth declaring: it selects the large-image layout. -->
